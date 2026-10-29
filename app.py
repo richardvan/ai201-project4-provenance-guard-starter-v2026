@@ -208,6 +208,12 @@ def submit():
     if not isinstance(text, str) or not text.strip():
         return jsonify({"error": "bad_request", "message": "Send JSON with a non-empty \"text\"."}), 400
 
+    if len(text) > config.MAX_TEXT_CHARS:
+        return jsonify({
+            "error": "text_too_long",
+            "message": f"Text is over the {config.MAX_TEXT_CHARS}-character limit.",
+        }), 413
+
 
     # Step 3 - one real signal that we first tested from the terminal
     # $python detector.py "some text"
@@ -228,7 +234,7 @@ def submit():
 
     # STEP 1 - the route answers. Hard coded without any logic yet.
     return jsonify({
-        "content_id": "hardcoded",
+        "content_id": content_id,
         "creator_id": creator_id,
         "guess": "unsure",
         "confidence": model_score,

@@ -208,15 +208,37 @@ All requests and responses are JSON.
      two off the response, so leaving them out costs you next unit's
      diagnostics. -->
 
+Milestone 3 state: only the model signal is wired in, so `guess` and `label` are placeholders and `style_score` is `null`. (Run on port 5001 because AirPlay holds 5000 on this machine.)
+
 ```bash
-$ curl -X POST http://127.0.0.1:5000/submit \
+$ curl -X POST http://127.0.0.1:5001/submit \
   -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+  -d @samples/clearly_ai.json
 ```
 
 ```json
-
+{"confidence":0.7544,"content_id":"c_3e9ec076c535","creator_id":"demo_instructor","guess":"unsure","label":"not built yet","model_score":0.7544,"style_score":null}
 ```
+
+Bad input:
+
+```bash
+$ curl -X POST http://127.0.0.1:5001/submit -H "Content-Type: application/json" -d '{"text":"","creator_id":"u1"}'
+{"error":"bad_request","message":"Send JSON with a non-empty \"text\"."}     # HTTP 400
+
+$ curl -X POST http://127.0.0.1:5001/submit -H "Content-Type: application/json" -d @long.json   # 12,000 characters
+{"error":"text_too_long","message":"Text is over the 10000-character limit."}   # HTTP 413
+```
+
+Detector alone on the three sample texts (`python detector.py "..."`):
+
+| Sample | perplexity | model_signal |
+|---|---|---|
+| clearly_ai | 22.3 | 0.7544 |
+| clearly_human | 51.7 | 0.4445 |
+| borderline | 66.5 | 0.3489 |
+
+The signal ranks AI above human, but the "borderline" text scores lower (more human) than the "clearly human" one, and the clearly-human text is only 0.44. That is a first sign that signal one alone doesn't separate cleanly.
 
 **An appeal**
 
