@@ -159,9 +159,9 @@ All requests and responses are JSON.
 <!-- Write the rule in words, then give the numbers. What happens when the two
      signals disagree? -->
 
-**The rule:**
+**The rule:** A weighted average of the two signals, with one exception for disagreement. If the two scores are more than 0.30 apart, the combined score is pulled halfway from the average toward the *lower* (more human) signal. So the AI band is only reached when both signals lean AI, or when one is strongly AI and the other is not far behind. I chose to lean human on a split because of the false-positive trace: a wrong accusation costs the writer more than a missed detection costs the site. The price is that AI text fooling one signal gets through as "unsure".
 
-**The numbers:**
+**The numbers:** model weight 0.6, style weight 0.4 (the style signal is easier to fool by reshaping text, so it counts for less). Disagreement gap 0.30; pull toward the lower signal 0.5. Thresholds stay at 0.35 (human) and 0.65 (AI). All in config.py.
 
 **Where it lives:** `scoring.py::combine_signals`
 
@@ -170,7 +170,24 @@ All requests and responses are JSON.
 
 **A case where my two signals split, and what my rule does with it:**
 
+A generic AI paragraph that I deliberately gave a lumpy shape (one-word sentence, a dash, a semicolon, an exclamation). The model signal still sees predictable wording (0.81) but the style signal sees an irregular shape (0.14). A plain weighted average would give 0.55, which is "unsure". The gap is 0.67, over the 0.30 trigger, so the rule pulls it halfway toward the lower signal and the combined score is **0.35, which is "human"**. That is the trade the rule makes on purpose: when the signals disagree, I'd rather miss some AI text than accuse someone. It does mean AI text that has been reshaped gets a clean label, and that is the style signal's blind spot working exactly as I wrote it.
 
+**Test results (both signals, combined, and the label they produce):**
+
+| Input | model | style | combined | label |
+|---|---|---|---|---|
+| clearly AI | 0.754 | 0.525 | 0.662 | ai |
+| clearly human | 0.445 | 0.199 | 0.346 | human |
+| formal human | 0.236 | 0.194 | 0.220 | human |
+| plain human (short sentences, common words) | 0.888 | 0.825 | 0.863 | **ai (false positive)** |
+| lightly-edited AI | 0.400 | 0.341 | 0.377 | unsure |
+| AI with lumpy style (the split case) | 0.814 | 0.144 | 0.345 | human (missed AI) |
+
+What I found:
+- **Clearly-AI and clearly-human text land 0.32 apart** (0.662 vs 0.346), but clearly-AI only just clears the 0.65 AI threshold.
+- **The false positive I predicted is real.** Plain, short-sentence human writing scores 0.86 and is labelled AI. Both signals read it the same way, so the disagreement rule can't help: it only rescues a writer when one signal is wrong, not both.
+- **Type-token ratio doesn't discriminate on short texts.** The clearly-AI sample scores a *higher* vocabulary ratio (0.91) than the clearly-human one (0.81), so that measure contributes noise here. Punctuation and sentence spread do the work.
+- **Lightly-edited AI is not caught.** It lands at 0.38, one hair above the human line.
 
 ---
 

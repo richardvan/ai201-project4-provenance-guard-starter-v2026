@@ -58,8 +58,21 @@ MAX_TEXT_CHARS = 10_000
 # down BEFORE you code it, and to put the numbers in your README. Whatever you
 # decide, it goes here.
 
-WEIGHT_MODEL_SIGNAL = 0.5
-WEIGHT_STYLE_SIGNAL = 0.5
+WEIGHT_MODEL_SIGNAL = 0.6
+WEIGHT_STYLE_SIGNAL = 0.4
+
+# When the two signals are further apart than DISAGREEMENT_GAP, the combined
+# score is pulled DISAGREEMENT_PULL of the way from the average toward the
+# lower (more human) signal. See README, "The combining rule".
+DISAGREEMENT_GAP = 0.30
+DISAGREEMENT_PULL = 0.5
+
+# How the style signal's raw measures map onto 0-1 "AI-ness" (stylometry.py).
+# Each is a (human-ish value, AI-ish value) pair: at or beyond the first the
+# measure scores 0, at or beyond the second it scores 1.
+STYLE_SPREAD_RANGE = (0.70, 0.20)   # sentence-length std / mean
+STYLE_TTR_RANGE = (0.90, 0.60)      # moving-average type-token ratio
+STYLE_PUNCT_RANGE = (6.0, 0.0)      # uncommon marks per 100 words
 
 
 # ─── Thresholds (Milestone 5) ────────────────────────────────────────────────
