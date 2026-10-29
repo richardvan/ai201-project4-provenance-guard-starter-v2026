@@ -66,10 +66,20 @@ def combine_signals(model_score: float, style_score: float) -> float:
     return round(min(max(average, 0.0), 1.0), 4)
 
 
+HUMAN_LABEL = (
+    "We think a person wrote this."
+)
+UNSURE_LABEL = (
+    "Our check can't tell whether a person or AI wrote this. That happens a lot with plain writing. You don't have to do anything, but you can appeal if you want it looked at."
+)
+AI_LABEL = (
+    "Our check flagged this as possibly written by AI. It can get plain, clear writing wrong. If you wrote it, appeal and your explanation goes on record for a person to read."
+)
+
+
 def score_to_label(score: float) -> tuple[str, str]:
     """
     Turn a score into a guess and the text a reader actually sees.
-    ← TODO (Milestone 5)
 
     Returns:
         (guess, label_text) — where `guess` is a short machine-readable string
@@ -80,7 +90,7 @@ def score_to_label(score: float) -> tuple[str, str]:
     "threshold".
 
         ✗ "human, 0.81 confidence"
-        ✓ "We think this was probably written by a person."
+        ✓ "We think a person wrote this."
 
     All three labels have to be **reachable**. If no score can produce one of
     them, your ranges have a gap — and Milestone 5 asks you to submit text that
@@ -92,12 +102,11 @@ def score_to_label(score: float) -> tuple[str, str]:
     think if they got it on their own work. That question is the whole
     milestone.
     """
-    # TODO: replace this — thresholds are in config.py
     if score >= config.AI_THRESHOLD:
-        return "ai", "PLACEHOLDER — write the high-confidence AI label."
+        return "ai", AI_LABEL
     if score <= config.HUMAN_THRESHOLD:
-        return "human", "PLACEHOLDER — write the high-confidence human label."
-    return "unsure", "PLACEHOLDER — write the unsure label."
+        return "human", HUMAN_LABEL
+    return "unsure", UNSURE_LABEL
 
 
 def label_ranges() -> list[tuple[str, str]]:

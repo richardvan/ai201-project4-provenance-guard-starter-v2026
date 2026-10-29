@@ -200,14 +200,12 @@ What I found:
 
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
-| high-confidence human |  |  |
-| unsure |  |  |
-| high-confidence AI |  |  |
+| high-confidence human | 0.00 – 0.35 | We think a person wrote this. |
+| unsure | 0.35 – 0.65 | Our check can't tell whether a person or AI wrote this. That happens a lot with plain writing. You don't have to do anything, but you can appeal if you want it looked at. |
+| high-confidence AI | 0.65 – 1.00 | Our check flagged this as possibly written by AI. It can get plain, clear writing wrong. If you wrote it, appeal and your explanation goes on record for a person to read. |
 
 **Why I worded the "unsure" one this way:**
-<!-- It's the hardest of the three. It has to admit uncertainty without
-     sounding like an accusation, because the person reading it may well have
-     written every word themselves. -->
+It starts with what we can't tell and says it's common with plain writing, so a reader doesn't take it as a charge. It leaves out lines like "this is not a judgment about you" and "if you wrote it yourself", which in a read-through sounded like the opposite of the intent. It gives the reader a choice (nothing, or appeal). The AI label follows the same idea: "possibly" and "our check" make it an estimate, it says the check can get plain, clear writing wrong, and it says what an appeal does.
 
 
 
@@ -259,25 +257,45 @@ The signal ranks AI above human, but the "borderline" text scores lower (more hu
 
 **An appeal**
 
+I submitted a plain, short-sentence piece I'd written as a person. It scored 0.86 and got the AI label, so it is the case an appeal exists for (this one is a text I wrote to test the false positive, not real work).
+
 ```bash
-$ curl -X POST http://127.0.0.1:5000/appeal \
+$ curl -X POST http://127.0.0.1:5001/appeal \
   -H "Content-Type: application/json" \
-  -d '{"content_id": "...", "reasoning": "..."}'
+  -d '{"content_id": "c_71f357e1811a", "reasoning": "I wrote this myself; I have my handwritten drafts."}'
 ```
 
 ```json
+{"content_id":"c_71f357e1811a","message":"Thank you. Your appeal has been recorded and this piece is marked as under review. A person can read your explanation next to the original decision. Nothing is re-scored automatically.","status":"under_review"}
+```
 
+An unknown ID and a missing field:
+
+```bash
+$ curl -X POST http://127.0.0.1:5001/appeal -H "Content-Type: application/json" -d '{"content_id":"c_nope","reasoning":"x"}'
+{"error":"not_found","message":"No submission found with content_id \"c_nope\"."}      # HTTP 404
+
+$ curl -X POST http://127.0.0.1:5001/appeal -H "Content-Type: application/json" -d '{"content_id":"c_71f357e1811a"}'
+{"error":"bad_request","message":"Send JSON with a non-empty \"content_id\" and \"reasoning\"."}   # HTTP 400
 ```
 
 **What the log shows afterwards**
 
+The log is append-only: the original decision stays as it was (`status: decided`) and the appeal is a new line after it with `status: under_review`.
+
 ```bash
-$ curl "http://127.0.0.1:5000/log?limit=3"
+$ curl "http://127.0.0.1:5001/log?limit=2"
 ```
 
 ```json
-
+{"count":2,"entries":[
+ {"combined_score":0.8625,"content_id":"c_71f357e1811a","creator_id":"writer_a","guess":"ai","label":"Our automated check thinks this may have been written with AI help. These checks can be wrong, especially on writing that is simple and clear. If you wrote it yourself, you can appeal and a person will look at it.","model_score":0.8879,"status":"decided","style_score":0.8245,"timestamp":"2026-10-29T01:30:52+00:00"},
+ {"content_id":"c_71f357e1811a","creator_id":"writer_a","event":"appeal","reasoning":"I wrote this myself; I have my handwritten drafts.","status":"under_review","timestamp":"2026-10-29T01:30:52+00:00"}]}
 ```
+
+*(The label in this captured log entry is the first draft of the AI label; the wording was revised afterwards and the current text is in Label Variants above.)*
+
+**All three labels are reachable:** the clearly-human sample scores 0.346 (human), the lightly-edited AI sample 0.377 (unsure), and the plain-writing piece above 0.863 (AI).
 
 ---
 
