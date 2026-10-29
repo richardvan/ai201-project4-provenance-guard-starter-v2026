@@ -39,6 +39,93 @@
 <!-- The path a submission takes, from arriving to the label a reader sees.
      Six or seven steps — this is the trace you wrote in Milestone 1. -->
 
+<!-- Format: N. **Thing** — what comes in → what it adds
+     Pieces: POST /submit, detector.py::model_signal, stylometry.py::style_signal,
+     scoring.py::combine_signals, scoring.py::score_to_label, audit.py,
+     POST /appeal (off to the side).
+     Answer in the steps: where bad input is stopped; when content_id is created
+     and why before the log write; whether the log is written before or after the
+     label; where an appeal joins the path. -->
+
+1. **`POST /submit` (app.py)** — raw JSON with `text` and `creator_id` → checks the input. Missing, non-string or empty text is rejected here with a 400, so nothing downstream ever sees bad input. It also assigns a fresh `content_id`, which is what an appeal will use later.
+2. **Model signal (`detector.py::model_signal`)** — the text → `model_score`, 0–1, how predictable the text is to a local language model (higher = more AI-like).
+3. **Style signal (`stylometry.py::style_signal`)** — the same text → `style_score`, 0–1, from sentence-length spread, vocabulary variety and punctuation (higher = more AI-like).
+4. **Combining rule (`scoring.py::combine_signals`)** — both scores → one `combined_score`, 0–1. This is where the false-positive decision is made: how the two signals are weighted and what happens when they disagree.
+5. **Label (`scoring.py::score_to_label`)** — `combined_score` → a `guess` (`ai` / `human` / `unsure`) and a plain-English label sentence. The thresholds in config.py decide which of the three a score falls into.
+6. **Audit log (`audit.py` → `logs/audit.jsonl`)** — everything so far → one JSON line with timestamp, `content_id`, `creator_id`, both signal scores, the combined score, the guess, the label and `status: decided`. It is written after the label is chosen so the entry records the full decision, not a partial one. The route then returns the same fields to the writer.
+7. **`POST /appeal` (off to the side)** — `content_id` plus the writer's reasoning → checks the `content_id` exists in the log, then records the appeal next to the original decision and sets `status: under_review`. It does not re-score anything; it makes sure a wrong label has a human-visible trail.
+
+### Following a false positive through the service
+
+**The writer:** someone writing in a second language, in plain vocabulary they are sure of, who submits an essay they wrote entirely themselves.
+
+**What score they get:** The model signal reads short sentences of common words as highly predictable, so `model_score` comes back high (illustrative: about 0.8). Plain writing is also evenly paced, so the style signal may agree (illustrative: about 0.6). The combined score lands above the AI threshold (0.65 in config.py), and the writer is labelled high-confidence AI. Both signals can be wrong in the same direction for this writer, so combining them doesn't rescue them. This is why the combining rule and thresholds matter: a rule that treats a high model score alone as enough would make this case a certain accusation.
+
+**What the label says to them:** The high-confidence AI label, in sentences written for a reader who has never heard of thresholds. It has to say that this is an automated estimate and that it can be wrong, and it has to point to the appeal, because the person reading it may have written every word. It must not read as a verdict or an accusation.
+
+**What they can do about it:** Send `POST /appeal` with the `content_id` from their submission and their reasoning (for example, how they wrote it, or drafts and notes). The service checks the ID exists, records the appeal in the audit log next to the original decision, sets the status to `under_review`, and confirms to the writer. Nothing is re-scored automatically; a person can read the log entry, with both signal scores beside the combined one, and see why the system flagged this writer.
+
+**What this decides:** the thresholds. Because the person most likely to be wrongly flagged has the least room to argue, the AI band should be hard to reach (a high AI threshold, a wide unsure band), even though that lets more AI text through.
+
+### Endpoint contracts
+
+All requests and responses are JSON.
+
+#### `POST /submit`
+
+**In**
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `text` | string | yes | The writing to check. Must contain non-whitespace characters. |
+| `creator_id` | string | no | Who submitted it. Defaults to `"unknown"`. |
+
+**Out (200)**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `content_id` | string | Unique ID for this submission (`c_` + 12 hex chars). Needed to appeal. |
+| `creator_id` | string | Echoed back. |
+| `guess` | string | `"ai"`, `"human"` or `"unsure"`. |
+| `confidence` | number 0–1 | The combined score. Higher means more likely AI. |
+| `label` | string | The full sentence shown to a reader. |
+| `model_score` | number 0–1 | Signal one alone. Higher means more likely AI. |
+| `style_score` | number 0–1 | Signal two alone. Higher means more likely AI. |
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 400 | `text` missing, not a string, or empty/whitespace | `{"error": "bad_request", "message": "..."}` |
+| 413 | `text` longer than the maximum length (limit set in config.py) | `{"error": "text_too_long", "message": "..."}` |
+
+#### `POST /appeal`
+
+**In**
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `content_id` | string | yes | Must match a `content_id` already in the audit log. |
+| `reasoning` | string | yes | The writer's explanation. Must be non-empty. |
+
+**Out (200)**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `content_id` | string | Echoed back. |
+| `status` | string | `"under_review"`. |
+| `message` | string | A confirmation sentence for the writer. |
+
+**Errors**
+
+| Status | When | Body |
+|---|---|---|
+| 400 | `content_id` or `reasoning` missing or empty | `{"error": "bad_request", "message": "..."}` |
+| 404 | `content_id` not found in the log | `{"error": "not_found", "message": "..."}` |
+
+**Read-back check:** someone building a client from this page alone would know every field to send, every field they get back, and which status code each failure produces. Open point: the maximum `text` length isn't chosen yet, and the contract says "set in config.py" until it is.
+
+
 
 
 ---
@@ -53,19 +140,19 @@
 
 ### Signal one — the model signal
 
-**What it measures:**
+**What it measures:** How predictable the text is to a small language model (gpt2 running locally). It computes perplexity over the first 400 tokens, then squashes it onto 0–1 so that low perplexity (easy to predict) scores high. Higher means more likely AI.
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** A language model writes by repeatedly choosing a likely next word, so its output tends to be text another model finds easy to guess. Human writing wanders more: odd word choices, abrupt turns, specific rather than typical detail.
 
-**What it can't see:**
+**What it can't see:** Authorship. It only sees predictability, and plain, common-word writing is predictable no matter who wrote it. A second-language writer, a younger writer, or anyone writing simply on purpose can score as machine-like as real AI text. Ornate human prose full of rare words can score as human, and so can AI text that has been reworded with unusual vocabulary. It also reads only the first 400 tokens, so anything later in a long piece is invisible to it.
 
 ### Signal two — the style signal
 
-**What it measures:**
+**What it measures:** The shape of the text without reading it: how much sentence length varies, how much of the vocabulary is unique (unique words / total words), and how much and how varied the punctuation is. These are combined into one 0–1 score where higher means more likely AI.
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** Generated prose tends toward even, mid-length sentences and a narrower, safer vocabulary. Human writing is lumpier: a three-word sentence next to a forty-word one, repeated pet words, irregular punctuation.
 
-**What it can't see:**
+**What it can't see:** Meaning. It has no idea what the text says, so anything that changes the shape without changing the substance fools it: breaking sentences up, adding typos, pasting in a quotation, or varying sentence length on purpose. Honest writers can trip it too. Someone with a naturally even rhythm, such as a formal report writer, looks "AI-shaped". It is also unreliable on very short text (a one-sentence submission has no spread), and vocabulary ratio drops as text gets longer, so length alone moves the score.
 
 ### The combining rule
 
