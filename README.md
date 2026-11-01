@@ -176,6 +176,8 @@ A generic AI paragraph that I deliberately gave a lumpy shape (one-word sentence
 
 **Test results (both signals, combined, and the label they produce):**
 
+*These are five short texts I used while building (two are the starter's demo samples). They are not the fixed sets my criteria refer to; those get chosen in `scenarios.py` for the next unit's testing.*
+
 | Input | model | style | combined | label |
 |---|---|---|---|---|
 | clearly AI | 0.754 | 0.525 | 0.662 | ai |

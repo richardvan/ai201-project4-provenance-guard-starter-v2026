@@ -44,7 +44,7 @@ Two things worth knowing before you pick numbers:
 ---
 ## 1.
 
-False positives: of 10 pieces I wrote myself, at most 1 is labelled high-confidence AI, and this holds in each of 3 trials. The 10 pieces are fixed in samples/ before I test, and include plain and formal writing.
+False positives: of 10 pieces I wrote myself, at most 1 is labelled high-confidence AI, and this holds in each of 3 trials. The 10 pieces are fixed in scenarios.py before I test, and include plain and formal writing.
 
 
 
@@ -56,7 +56,7 @@ Wrongly accusing a real writer costs that person far more than missing some AI t
 
 ## 2.
 
-Score spread: the average combined score of 5 clearly-AI pieces is at least 0.20 higher than the average of 5 clearly-human pieces. Both sets of 5 are fixed in samples/ before I test.
+Score spread: the average combined score of 5 clearly-AI pieces is at least 0.20 higher than the average of 5 clearly-human pieces. Both sets of 5 are fixed in scenarios.py before I test.
 
 
 
@@ -68,7 +68,7 @@ If the two groups don't separate, the score carries no information and the label
 
 ## 3.
 
-Edited AI: at least 3 of 5 lightly-edited AI pieces (an AI-written piece with about 10% of its words changed by hand, fixed in samples/ before I test) get a combined score above 0.5.
+Edited AI: at least 3 of 5 lightly-edited AI pieces (an AI-written piece with about 10% of its words changed by hand, fixed in scenarios.py before I test) get a combined score above 0.5.
 
 
 
