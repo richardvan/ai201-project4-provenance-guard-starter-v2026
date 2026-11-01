@@ -36,6 +36,8 @@
 
 ## What This Does
 
+Provenance Guard is a small web service that estimates whether a piece of writing was written by a person or with AI help, and gives the writer a plain-English label they can act on. A submission goes through two independent signals (a local language model reading how predictable the text is, and a style measure of its shape), which are combined into one score and turned into one of three labels: probably human, unsure, or possibly AI. Every decision is written to an audit log, and a writer who thinks the label is wrong can appeal, which marks the piece as under review and records their reasoning next to the original decision. It is built to lean human when unsure, because wrongly accusing a real writer costs more than missing some AI text.
+
 <!-- The path a submission takes, from arriving to the label a reader sees.
      Six or seven steps — this is the trace you wrote in Milestone 1. -->
 
@@ -301,17 +303,17 @@ $ curl "http://127.0.0.1:5001/log?limit=2"
 
 ## How I Used AI
 
-**Moment 1**
+**Moment 1: checking what the AI added against the brief**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* Help working through Milestone 1 step by step.
+- *What came back:* It created a new `DESIGN.md` to hold my path, signals, false-positive trace and endpoint contracts. The brief never asks for that file.
+- *What I changed:* I asked whether the instructions actually said to make it or whether it belonged in the README. It admitted it had added the file on its own, and the README already had slots for most of it. I had it delete `DESIGN.md` and put the path and signal write-ups in the README's What This Does and Signals and Scoring sections. The false-positive trace and endpoint contracts, which have no README slot, went in as subsections of What This Does.
 
-**Moment 2**
+**Moment 2: reading my labels as the writer**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* For each of my three draft labels, what a writer would think it says about them and what they would do next, answered as the writer and not as an engineer, without rewriting anything.
+- *What came back:* "This is not a judgment about you" and "if you wrote it yourself" both read as suspicion, which was the opposite of what I meant. The unsure label also gave the writer nothing to do, and the AI label didn't say who sees it while an appeal is open.
+- *What I changed:* I cut both suspicion-sounding lines, gave the unsure label a choice (do nothing or appeal), and made the AI label say what an appeal does. I did not make the label promise a timeline or a changed label, because the system doesn't do either.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
