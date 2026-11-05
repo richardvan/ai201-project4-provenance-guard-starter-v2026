@@ -452,40 +452,62 @@ My system called it AI: model score 0.805, style score 0.671, combined 0.751, la
 
 ## Run Log and Verdicts
 
-<!-- Your five criteria across three trials. `run_eval.py --label before`. -->
+`python run_eval.py --label before` (output in `results/run_2026-11-04_1827_before.md`), three trials each, nothing changed between them. Criteria 1, 2, 3 and 5 are run by `run_eval.py` against `scenarios.py`; criterion 4 can't be (it needs a submission and then an appeal), so I ran it by hand three times. The pieces: 10 of my own writing (5 biogeography and 3 cardiomyopathy coursework, a chat message and an email), 5 AI texts on the biogeography topic, and 5 lightly-edited versions of those. Names in the email are scrubbed. The AI texts and the light edits are mine/Claude's, not human writing.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |
+| 1. My own writing labelled high-confidence AI | at most 1 of 10, every trial | 0/10 | 0/10 | 0/10 | MET |
+| 2. Score spread, clearly-AI average minus clearly-human average | at least 0.20 | 0.290 | 0.290 | 0.290 | MET |
+| 3. Lightly-edited AI scoring above 0.5 | at least 3 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Appeals change status and log; unknown ID gives 404 and writes nothing | 5 of 5 valid, plus the unknown-ID clause | 5/5 valid; 404 but wrote 1 entry | 5/5 valid; **200**, wrote 1 entry | 5/5 valid; **200**, wrote 1 entry | MISSED |
+| 5. Same text 5 times varies by at most 0.05 | 0.05 | 0.000 | 0.000 | 0.000 | MET |
 
-**Real output from one trial**, pasted as text, naming the file and function
-that produced it:
+All trials of criteria 1, 2, 3 and 5 came out identical, which is what I'd expect: nothing in either signal is random. (My Unit 7 reason for criterion 5 assumed the model signal might drift. It doesn't, so criterion 5 can't fail here.)
+
+**How I decided.** 1: no piece reached 0.65; the highest was 0.5825 and 3 of 10 scored above 0.5, none labelled AI. 2: AI texts averaged 0.709, my writing 0.419. 3: all five scored 0.58 to 0.71, though only three were labelled AI (two are "unsure"), and the criterion is about score. 5: every send scored 0.7052. 4: see Diagnoses.
+
+**Caution about my own MET verdicts.** Criterion 1 passed 0 of 10 while the attack set's false-positive family broke 6 of 8. My pieces are messy academic prose with typos, and the attack set's false positives are clean plain writing, so my target was met on writing that was never at risk. Criterion 2 passed with a thin margin: the AI average (0.709) is only 0.06 above the AI threshold.
+
+**Real output from one trial**, pasted as text. Criteria 1, 2, 3 and 5 came from `scenarios.py` run through `run_eval.py::main`, which sends each text to `app.py::submit`; the score is `scoring.py::combine_signals` and the label `scoring.py::score_to_label`. Criterion 4 came from calls to `app.py::appeal` and `GET /log` (`app.py::get_log`). Each criterion's full results are in the results file.
 
 ```json
+// 1. own writing (highest score, piece 8)
+{"status": 200, "guess": "unsure", "confidence": 0.5825, "model_score": 0.57, "style_score": 0.6013, "label": "Our check can't tell whether a person or AI wrote this. That happens a lot with plain writing. You don't have to do anything, but you can appeal if you want it looked at.", "sent": "Angiotensin II is ahormone that causes constriction of blood vessels f"}
 
+// 1. own writing (lowest score, piece 5)
+{"status": 200, "guess": "human", "confidence": 0.3045, "model_score": 0.2282, "style_score": 0.419, "label": "We think a person wrote this.", "sent": "Interactive effects of biogeographic processes are the influence of th"}
+
+// 2. spread AI (first AI text)
+{"status": 200, "guess": "ai", "confidence": 0.7052, "model_score": 0.7309, "style_score": 0.6667, "label": "Our check flagged this as possibly written by AI. It can get plain, clear writing wrong. If you wrote it, appeal and your explanation goes on record for a person to read.", "sent": "Biogeography is a complex field that examines the distribution of spec"}
+
+// 3. edited AI (a lightly-edited text labelled unsure)
+{"status": 200, "guess": "unsure", "confidence": 0.5809, "model_score": 0.6723, "style_score": 0.4439, "label": "Our check can't tell whether a person or AI wrote this. That happens a lot with plain writing. You don't have to do anything, but you can appeal if you want it looked at.", "sent": "Dispersal plays a crucial role in deciding the geographic distribution"}
+
+// 5. consistency (first of 5 identical sends)
+{"status": 200, "guess": "ai", "confidence": 0.7052, "model_score": 0.7309, "style_score": 0.6667, "label": "Our check flagged this as possibly written by AI. It can get plain, clear writing wrong. If you wrote it, appeal and your explanation goes on record for a person to read.", "sent": "Biogeography is a complex field that examines the distribution of spec"}
+
+// 4. appeal path — POST /appeal, valid content_id (trial 1)
+{"content_id":"c_d83331150e10","message":"Thank you. Your appeal has been recorded and this piece is marked as under review. A person can read your explanation next to the original decision. Nothing is re-scored automatically.","status":"under_review"}
+
+// 4. GET /log for that content_id: original decision, then the appeal after it
+{"timestamp":"...","content_id":"c_d83331150e10","creator_id":"c4_eval_1","guess":"ai",...,"status":"decided"}
+{"timestamp":"...","content_id":"c_d83331150e10","creator_id":"c4_eval_1","event":"appeal","reasoning":"I wrote this myself (1).","status":"under_review"}
+
+// 4. unknown content_id, first try (trial 1): 404, but one entry IS written
+{"error":"not_found","message":"No submission found with content_id \"c_doesnotexist\"."}
+{"content_id":"c_doesnotexist","creator_id":"unknown","event":"rejected","reason":"appeal not_found","status":"rejected","timestamp":"2026-11-05T02:27:28+00:00"}
+
+// 4. same unknown content_id, second try (trials 2 and 3): 200, an appeal is recorded for a submission that never existed
+(HTTP 200, status "under_review", one new "appeal" entry for c_doesnotexist)
 ```
 
 **Diagnoses**
 
-<!-- For each miss AND each broken attack: the stage and the mechanism.
+**Criterion 4 (MISSED): the route (`app.py::appeal`), plus a clause in my criterion that contradicted the logging requirement.**
+- *Unknown ID wrote an entry.* The criterion says an unknown ID "returns 404 and writes nothing". In Milestone 1 I made the route log every refusal (`audit.log_rejection`), because a refusal that leaves no trace is invisible. So a 404 now writes one `rejected` entry. The behaviour is deliberate. My criterion was the thing that was wrong, but it was measurable and the clause failed, so I'm not rewording it. The verdict stays MISSED.
+- *The same unknown ID later got a 200.* This is a real bug. `audit.log_rejection` stores the `content_id` it was refused for, and `/appeal` checks the ID exists with `audit.entries_for(content_id)`, which returns *any* entry carrying that ID, including a rejection. After one 404, a second appeal with the same bogus ID finds the rejection entry, passes the existence check, and records an appeal for a submission that never existed. A writer who mistypes their ID twice would be told their appeal was recorded when it was not attached to any decision. The stage is the route, and the mechanism is that the existence check does not tell a decision apart from a rejection.
 
-     Your service has five stages: the route, signal one, signal two, the
-     combining rule, and the label mapping.
-
-     Not a diagnosis:  "The evasion attacks got through."
-     A diagnosis:      "Four evasion inputs got through. All four had typos
-                        added to AI-generated text. My second signal measures
-                        word variety, and typos raise word variety — so it read
-                        them as more human. My combining rule weights that
-                        signal at 0.6, so it dragged the whole score down."
-
-     Look for a pattern. Five failures on one signal is one problem, not five. -->
-
-
+**Criteria 1, 2, 3, 5 were MET**, so there is no miss to diagnose. The 16 broken attacks from the attack run still need their own diagnoses (stage and mechanism); those come next.
 
 ---
 
