@@ -323,24 +323,18 @@ $ curl "http://127.0.0.1:5001/log?limit=2"
 
 ## Rate Limiting
 
-**My limits:** ___ per minute, ___ per day
+**My limits:** 5 per minute, 50 per day, on `POST /submit`, both set in `config.py`.
 
-**Why those numbers and not others:**
-<!-- Think about two people: a real writer submitting their own work a few
-     times an hour, and a script sending a thousand variations to map your
-     thresholds. Your numbers have to be liveable for the first and hostile to
-     the second. -->
+**Why those numbers and not others:** A real writer submits a piece, reads the label, maybe edits and resubmits. Five a minute is more than anyone can do by hand, and 50 a day is far more than a person needs, so a genuine writer should never see a 429. A script probing my thresholds needs hundreds of variations. At 50 a day, one caller could send at most 50, so mapping the 0.35 and 0.65 boundaries takes days instead of minutes. I kept the per-minute number low because each submission runs a language model, so a burst also costs real compute.
 
-**What a caller counts as:** <!-- per address, or per creator_id? They fail
-differently — one script can look like a thousand callers, and one household
-can look like one. -->
+**What a caller counts as:** The creator_id when the request has one, otherwise the caller's address (`rate_limit_key` in `app.py`). That is the weakness: a script can send every request under a fresh creator_id and never hit a limit, and the attack set's rows each use their own creator_id for exactly that reason. The limit stops one noisy caller, not someone willing to rotate names. Limiting by address would catch that but would treat a whole household or campus as one caller.
 
 **The run of status codes when I pushed past it:**
 
 <!-- python run_attacks.py --flood 15 -->
 
 ```
-
+200 200 200 200 200 429 429 429 429 429 429 429 429 429 429
 ```
 
 ---

@@ -151,7 +151,7 @@ def health():
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
 @app.post("/submit")
-# @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
+@limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
     """
     Take a piece of text, decide about it, log the decision, answer.
@@ -206,9 +206,11 @@ def submit():
     creator_id = payload.get("creator_id", "unknown")
 
     if not isinstance(text, str) or not text.strip():
+        audit.log_rejection(creator_id=creator_id, reason="bad_request: missing or empty text")
         return jsonify({"error": "bad_request", "message": "Send JSON with a non-empty \"text\"."}), 400
 
     if len(text) > config.MAX_TEXT_CHARS:
+        audit.log_rejection(creator_id=creator_id, reason="text_too_long", length=len(text))
         return jsonify({
             "error": "text_too_long",
             "message": f"Text is over the {config.MAX_TEXT_CHARS}-character limit.",
@@ -275,6 +277,7 @@ def appeal():
 
     if not isinstance(content_id, str) or not content_id.strip() \
             or not isinstance(reasoning, str) or not reasoning.strip():
+        audit.log_rejection(creator_id="unknown", reason="appeal bad_request: missing content_id or reasoning")
         return jsonify({
             "error": "bad_request",
             "message": "Send JSON with a non-empty \"content_id\" and \"reasoning\".",
@@ -283,6 +286,7 @@ def appeal():
     # A typo'd ID would otherwise look like a broken endpoint.
     entries = audit.entries_for(content_id)
     if not entries:
+        audit.log_rejection(creator_id="unknown", reason="appeal not_found", content_id=content_id)
         return jsonify({
             "error": "not_found",
             "message": f"No submission found with content_id \"{content_id}\".",
