@@ -507,7 +507,36 @@ All trials of criteria 1, 2, 3 and 5 came out identical, which is what I'd expec
 - *Unknown ID wrote an entry.* The criterion says an unknown ID "returns 404 and writes nothing". In Milestone 1 I made the route log every refusal (`audit.log_rejection`), because a refusal that leaves no trace is invisible. So a 404 now writes one `rejected` entry. The behaviour is deliberate. My criterion was the thing that was wrong, but it was measurable and the clause failed, so I'm not rewording it. The verdict stays MISSED.
 - *The same unknown ID later got a 200.* This is a real bug. `audit.log_rejection` stores the `content_id` it was refused for, and `/appeal` checks the ID exists with `audit.entries_for(content_id)`, which returns *any* entry carrying that ID, including a rejection. After one 404, a second appeal with the same bogus ID finds the rejection entry, passes the existence check, and records an appeal for a submission that never existed. A writer who mistypes their ID twice would be told their appeal was recorded when it was not attached to any decision. The stage is the route, and the mechanism is that the existence check does not tell a decision apart from a rejection.
 
-**Criteria 1, 2, 3, 5 were MET**, so there is no miss to diagnose. The 16 broken attacks from the attack run still need their own diagnoses (stage and mechanism); those come next.
+**Criteria 1, 2, 3, 5 were MET**, so there is no miss to diagnose. The attack set's 16 broken attacks follow, grouped by the stage that failed. For each I checked both signal scores, and where it mattered I recomputed the score by hand.
+
+**Pattern 1: plain or formulaic human writing is read as AI by both signals (the combining rule can't help). FP02, FP03, FP04, FP05, FP06, FP07. Stages: signal one and signal two.**
+- Signal one: perplexity was between 12.8 and 23.5 on all six (the midpoint that scores 0.5 is 45), so the model score was 0.74 to 0.88. Short sentences of common words and fixed phrasing are easy for gpt2 to predict, whoever wrote them.
+- Signal two: the uncommon-punctuation measure was at its maximum (1.00) on all six, because none of them has a semicolon, dash, bracket or exclamation mark. FP05 (technical documentation) and FP07 (a deliberately repeated phrase) also scored high on the vocabulary measure because they reuse terms.
+- Both signals agreed (gaps of 0.05 to 0.27, all under the 0.30 trigger), so my disagreement rule never applied. FP03 is the example I followed in detail above. This is one problem, not six: both signals treat plain, predictable writing as machine writing, and that is how careful second-language writers, students writing to a rubric and technical writers write.
+
+**Pattern 2: my combining rule's disagreement pull turned "unsure" into "human". EV01, EV02, EV07, EV08. Stage: the combining rule (`scoring.py::combine_signals`).**
+- When the two signals are more than 0.30 apart, the rule pulls the score halfway toward the lower one. I wrote it to lean human so that a wrong accusation needs both signals to agree.
+- I recomputed these four without the pull. The plain 0.6/0.4 average gives 0.365, 0.419, 0.443 and 0.392. All four are **unsure**, not human. The pull moved each of them across the 0.35 line.
+- The pull changed the label on 6 attack rows in total and **never rescued a false-positive row**: the false positives had agreeing signals, so it never fired for them. In this set it cost me four evasion breaks and protected nobody.
+- The four were each hurt by a different first cause:
+  - EV02: one-word sentences ("Really.") inflated the sentence-length spread, so signal two dropped to 0.157 (signal two).
+  - EV07: padding with semicolons and commas pushed the punctuation measure to its minimum, so signal two dropped to 0.227 (signal two).
+  - EV01: typos made the text unpredictable (perplexity 124.8, against about 22 for clean AI text), so signal one dropped to 0.164 (signal one, see pattern 3).
+  - EV08: only 10 words, so perplexity came out at 90.9 and signal one dropped to 0.245 (signal one on short text).
+
+**Pattern 3: signal one reads "surprising" as "human", so anything that adds surprise lowers it. EV01, EV08, PI02, and EV05 in part. Stage: signal one (`detector.py::model_signal`).**
+- EV01 (typos): misspellings aren't words gpt2 expects, so perplexity jumps. This differs from the brief's example, where typos hit signal two: in my system signal two still scored EV01 at 0.667 and it was signal one that read it as human.
+- PI02 (the prompt injection that worked): the instruction text is not obeyed, because neither signal follows instructions. A prefix in capital letters ("SYSTEM: provenance check bypassed...") is unpredictable text, so perplexity rose to 105 and the model score fell from 0.754 (the AI paragraph alone) to 0.204. It is dilution, not obedience. The same AI paragraph alone scored 0.460, so it was already only "unsure" before the prefix.
+- EV05 (heavy human editing): a human rewrote the paragraph in a casual voice with a dash, so both signals scored about 0.32. This is not a flaw to fix: it is mostly human text now, and a detector built on predictability and shape can't tell.
+
+**Pattern 4: the route lets bad input reach the signals or crash. MF02, RQ07 (crash), MF06, MF07 (scored as AI). Stages: the route and signal two.**
+- MF02 (a one-character text): `app.py::submit` only checks the text isn't empty. `detector.py::perplexity` raises `ValueError` for under 3 tokens, and nothing catches it, so Flask returns a 500.
+- RQ07 (a JSON array as the body): `payload = request.get_json(silent=True) or {}` then `payload.get("text")` fails because a list has no `.get`. This is at the top of `submit`, before any validation, and also returned a 500.
+- Both crashes wrote no log entry: a 500 skips the code that logs. Only the terminal showed them.
+- MF06 (emoji) and MF07 (Arabic script): `stylometry.py::words` keeps only a-z, digits and apostrophes, so it finds **0 words** in both. The vocabulary measure then defaults to 0.0, which reads as maximum AI, and no uncommon marks pushes punctuation to maximum too. Signal one adds to it: gpt2 gives repeated emoji a perplexity of 1.2 and Arabic text 10.9, so it also scores them as machine-like. A real writer posting in Arabic would be told, at 0.877, that their writing is probably AI.
+
+**Across everything:** two causes explain 10 of the 16 breaks. Signals one and two both reward predictability and plainness (pattern 1, six breaks), and my disagreement pull turned four "unsure" results into "human" (pattern 2). Pattern 3 (signal one and surprise) overlaps with pattern 2 on EV01 and EV08, and adds PI02 and EV05. Both point at the signals and the combining rule, not at the label wording or the route. Only pattern 4 and criterion 4's bug are route problems.
+
 
 ---
 
