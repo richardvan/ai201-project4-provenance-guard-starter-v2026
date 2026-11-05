@@ -61,11 +61,7 @@ MAX_TEXT_CHARS = 10_000
 WEIGHT_MODEL_SIGNAL = 0.6
 WEIGHT_STYLE_SIGNAL = 0.4
 
-# When the two signals are further apart than DISAGREEMENT_GAP, the combined
-# score is pulled DISAGREEMENT_PULL of the way from the average toward the
-# lower (more human) signal. See README, "The combining rule".
-DISAGREEMENT_GAP = 0.30
-DISAGREEMENT_PULL = 0.5
+# (Removed in unit 8: the disagreement pull. See README, "The Improvement".)
 
 # How the style signal's raw measures map onto 0-1 "AI-ness" (stylometry.py).
 # Each is a (human-ish value, AI-ish value) pair: at or beyond the first the

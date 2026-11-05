@@ -57,11 +57,8 @@ def combine_signals(model_score: float, style_score: float) -> float:
         + config.WEIGHT_STYLE_SIGNAL * style_score
     )
 
-    # Disagreement rule: when the signals split, lean toward the more human one,
-    # so an accusation needs both signals to point the same way.
-    if abs(model_score - style_score) > config.DISAGREEMENT_GAP:
-        lower = min(model_score, style_score)
-        average -= config.DISAGREEMENT_PULL * (average - lower)
+    # Unit 8: the disagreement pull that used to sit here is gone. It turned four
+    # "unsure" evasion results into "human" and never rescued a false positive.
 
     return round(min(max(average, 0.0), 1.0), 4)
 

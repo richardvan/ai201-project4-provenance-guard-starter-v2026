@@ -161,16 +161,16 @@ All requests and responses are JSON.
 <!-- Write the rule in words, then give the numbers. What happens when the two
      signals disagree? -->
 
-**The rule:** A weighted average of the two signals, with one exception for disagreement. If the two scores are more than 0.30 apart, the combined score is pulled halfway from the average toward the *lower* (more human) signal. So the AI band is only reached when both signals lean AI, or when one is strongly AI and the other is not far behind. I chose to lean human on a split because of the false-positive trace: a wrong accusation costs the writer more than a missed detection costs the site. The price is that AI text fooling one signal gets through as "unsure".
+**The rule:** A plain weighted average of the two signals, 0.6 for the model signal and 0.4 for the style signal. (Until unit 8 it also had a disagreement pull: when the signals were more than 0.30 apart, the score was pulled halfway toward the lower one, to lean human on a split. I removed it after the attack run showed it turned four "unsure" evasion results into "human" and never rescued a false positive. See "The Improvement".)
 
-**The numbers:** model weight 0.6, style weight 0.4 (the style signal is easier to fool by reshaping text, so it counts for less). Disagreement gap 0.30; pull toward the lower signal 0.5. Thresholds stay at 0.35 (human) and 0.65 (AI). All in config.py.
+**The numbers:** model weight 0.6, style weight 0.4 (the style signal is easier to fool by reshaping text, so it counts for less). Thresholds 0.35 (human) and 0.65 (AI). All in config.py.
 
 **Where it lives:** `scoring.py::combine_signals`
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:**
+**A case where my two signals split, and what my rule did with it (this is the unit 7 rule; see "The Improvement" for what I changed):**
 
 A generic AI paragraph that I deliberately gave a lumpy shape (one-word sentence, a dash, a semicolon, an exclamation). The model signal still sees predictable wording (0.81) but the style signal sees an irregular shape (0.14). A plain weighted average would give 0.55, which is "unsure". The gap is 0.67, over the 0.30 trigger, so the rule pulls it halfway toward the lower signal and the combined score is **0.35, which is "human"**. That is the trade the rule makes on purpose: when the signals disagree, I'd rather miss some AI text than accuse someone. It does mean AI text that has been reshaped gets a clean label, and that is the style signal's blind spot working exactly as I wrote it.
 
@@ -542,22 +542,49 @@ All trials of criteria 1, 2, 3 and 5 came out identical, which is what I'd expec
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** One change, in `scoring.py::combine_signals` (and its two constants in `config.py`): I removed the disagreement pull. The combined score is now just the 0.6/0.4 weighted average. Nothing else moved: same signals, same weights, same thresholds, same labels.
 
-**Which diagnosis pointed at it:**
+**Which diagnosis pointed at it:** Pattern 2 in the diagnoses. EV01, EV02, EV07 and EV08 would all have been "unsure" under a plain average (0.365, 0.419, 0.443, 0.392) but the pull moved each across the 0.35 line into "human". The pull changed the label on 6 rows of the attack set and never rescued a false-positive row.
+
+**My prediction before I ran it:** evasion breaks drop from 5 to 1 (only EV05 stays human), MF05 (a very long single word) goes back from "unsure" to the AI label and counts as a new break, net 16 broken becomes 13, and the six false positives stay broken because the pull never touched them.
 
 ### Attack Run — After
 
-<!-- Same format. `run_attacks.py --label after` -->
+`python run_attacks.py --set attack_set --label after` on a fresh service, same marking rules as the before run. Full output: `results/attack_run_2026-11-04_1834_after.md`.
 
+| Family | Broke before | Broke after |
+|---|---|---|
+| evasion | 5 | **1** |
+| false_positive | 6 | 6 |
+| prompt_injection | 1 | 1 |
+| malformed | 4 | **5** |
+| flood_same_creator | 0 | 0 |
+| **total** | **16 of 56** | **13 of 56** |
 
+Only the rows whose label changed, side by side (every other row kept its label; a few, like EV03, PI03, MF03 and MF04, moved in score because they had been pulled before, but stayed in the same band):
 
-**Did it help, and how do I know:**
+| ID | Family | Before (label, score) | After (label, score) | Verdict before → after |
+|---|---|---|---|---|
+| EV01 | evasion | human 0.264 | unsure 0.365 | BROKE → HELD |
+| EV02 | evasion | human 0.288 | unsure 0.419 | BROKE → HELD |
+| EV07 | evasion | human 0.335 | unsure 0.443 | BROKE → HELD |
+| EV08 | evasion | human 0.319 | unsure 0.392 | BROKE → HELD |
+| PI05 | prompt_injection | human 0.299 | unsure 0.445 | HELD → HELD |
+| MF05 | malformed | unsure 0.649 | ai 0.799 | HELD → BROKE |
 
-<!-- Widening the unsure band usually fixes one problem and creates another.
-     Reporting that trade honestly is worth full credit. -->
+The five criteria again, three trials each (`python run_eval.py --label after`, results in `results/run_2026-11-04_1834_after.md`; criterion 4 by hand again):
 
+| Criterion | Target | Before (runs 1-3) | After (runs 1-3) | Verdict after |
+|---|---|---|---|---|
+| 1. Own writing labelled AI | at most 1 of 10 | 0/10, 0/10, 0/10 | **1/10**, 1/10, 1/10 | MET, with no slack |
+| 2. Score spread | at least 0.20 | 0.290 ×3 | 0.263 ×3 | MET |
+| 3. Edited AI above 0.5 | at least 3 of 5 | 5/5 ×3 | 5/5 ×3 | MET |
+| 4. Appeals / unknown ID | 5 of 5 plus "writes nothing" | 404 then 200, 200 | 404 then 200, 200 | MISSED (unchanged: I did not touch that bug) |
+| 5. Same text 5 times | at most 0.05 | 0.000 ×3 | 0.000 ×3 | MET |
 
+All three trials were identical again for criteria 1, 2, 3 and 5.
+
+**Did it help, and how do I know:** It did what I predicted on the attack set: evasion breaks went from 5 to 1, MF05 became a new break, and the total went from 16 to 13. That matches my prediction row for row. But it had a cost I did *not* predict. Piece 9 of my own writing, the chat message, scored 0.5155 before and **0.6513 after, just over the 0.65 AI line**, so a real person's message is now labelled AI. Criterion 1 still passes (1 of 10 is within "at most 1"), but it now has no slack, and the score spread narrowed from 0.290 to 0.263. So the pull had been quietly protecting a real writer as well as hiding evasions. That is the trade, and it cuts against what I said matters most: I said a wrong accusation costs more than a miss, and this change reduced misses while adding one wrong accusation of my own writing. I would call it a real improvement on the attack set and a mixed result on my own stated priority. It did nothing for the six false positives, which are the bigger problem.
 
 ---
 
