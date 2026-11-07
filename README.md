@@ -317,6 +317,18 @@ $ curl "http://127.0.0.1:5001/log?limit=2"
 - *What came back:* "This is not a judgment about you" and "if you wrote it yourself" both read as suspicion, which was the opposite of what I meant. The unsure label also gave the writer nothing to do, and the AI label didn't say who sees it while an appeal is open.
 - *What I changed:* I cut both suspicion-sounding lines, gave the unsure label a choice (do nothing or appeal), and made the AI label say what an appeal does. I did not make the label promise a timeline or a changed label, because the system doesn't do either.
 
+**Moment 3: checking the AI's own diagnosis against the numbers (unit 8)**
+
+- *What I asked for:* Possible causes for my worst false positive (FP03), then for the AI to run the checks.
+- *What came back:* Three possible causes at different stages without ranking them, then the numbers for each (both signals high, punctuation measure at its maximum, no reweighting could clear it), and later a drafted diagnosis for all 16 broken attacks. When it rechecked its own draft it found two claims were wrong: it had said the signal gaps were under 0.2 (FP06's was 0.27) and that two causes explained 12 of 16 breaks (it was 10).
+- *What I changed:* The README states the corrected numbers. The diagnoses are the AI's draft, which I read against the numbers.
+
+**Moment 4: what to do about a criterion I missed (unit 8)**
+
+- *What I asked for:* What to do about criterion 4, where "an unknown ID writes nothing" turned out false because I'd added rejection logging.
+- *What came back:* Advice to call it MISSED and not reword it, because it was measurable and the clause failed. Rerunning the check also turned up a real bug: a repeated unknown ID got a 200 because the rejection entry made the ID look real.
+- *What I changed:* I kept the MISSED verdict, wrote the bug into the diagnosis, and did not touch the criterion's wording.
+
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
 ---
@@ -590,15 +602,19 @@ All three trials were identical again for criteria 1, 2, 3 and 5.
 
 ## What's Still Broken
 
-<!-- For each attack still getting through and each criterion still missed:
-     what you'd do, and why you stopped. -->
+13 of 56 attacks still break, and criterion 4 is still missed. I stopped at one change because the milestone asks for one change measured properly. What I'd do for each, in the order I'd do them:
 
-
+- **The six false positives (FP02 to FP07).** The most serious one, and the one I'd fix first. Both signals read plain, predictable writing as AI, so no weighting or threshold fixes it: even style-only scores FP03 at 0.671. I'd change the punctuation measure so that having *no* uncommon marks in a short text isn't read as maximum AI, and test the model signal against a set of real second-language and technical writing before trusting it again. I did not try it because changing a signal is a bigger and harder-to-measure change than removing one rule. A higher AI threshold would clear them (0.80 would clear FP03) but my own clearly-AI text only scores about 0.7, so it would stop the system ever labelling AI.
+- **MF06 and MF07 (emoji, Arabic) labelled AI at 0.93 and 0.88.** `stylometry.py::words` only keeps a-z, so it sees zero words and defaults to maximum AI. I'd return "unsure" or reject the input when there are no words to measure. A writer posting in Arabic would be told their writing is probably AI, which I would least want to explain.
+- **MF05 (one very long word) labelled AI.** New in the after run. Same fix as above: no meaningful words means no verdict.
+- **MF02 and RQ07 (500s).** The route doesn't validate before it scores. `detector.py::perplexity` raises on under 3 tokens and `submit` doesn't catch it, and a JSON array body fails on `.get` at the top of `submit`. I'd catch the detector error and return a 400, and check the body is an object first. Neither crash writes a log entry, so I'd also log refusals before the route can crash. Small, cheap fixes; I left them because the first pass is meant to be measured before fixing.
+- **PI02 (the prompt injection that worked) and EV05 (human-edited AI).** PI02 works by diluting the score with unpredictable text, so the fix is the signal, not an instruction filter. EV05 is mostly human text now and I don't think a detector built on predictability and shape can catch it. I would leave EV05 and say so.
+- **Criterion 4 (appeals).** The code is right to log a refusal, so I'd keep that and fix the two problems: the "writes nothing" clause in my criterion was wrong, and `/appeal` must check the ID against *decisions only*, not any log entry, so a repeated bad ID gets 404 again. I'd also show the writer that their label is under review while an appeal is open.
+- **Piece 9 of my own writing now labelled AI.** The removed pull had been protecting it. I'd look at which signal is high on that chat message before touching anything else.
 
 **The trade I'd make if this ran for real:**
 
-<!-- Two sentences. Fewer wrong accusations means more AI text getting through.
-     Say which way you'd go and WHO PAYS FOR IT. -->
+I'd go with fewer wrong accusations, because a writer called AI for their own work loses far more than the site loses when some AI text slips through. The cost lands on the site and on the readers or teachers who see AI text marked "unsure" or "human", but right now my system doesn't even deliver this trade: it still accuses plain writers like FP03 while edited AI gets through, so I'd fix that before it ran for real.
 
 
 
