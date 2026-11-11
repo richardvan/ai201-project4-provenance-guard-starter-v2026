@@ -50,6 +50,12 @@ DETECTOR_MAX_TOKENS = 400
 # only reads the first 400 tokens anyway, so this is a guard, not a quality limit.
 MAX_TEXT_CHARS = 10_000
 
+# Capstone: how long /submit waits for scoring before answering 504.
+# Measured: a cold run (model load ~7s + first score ~2s) is about 9s, and a
+# warm run is about 0.1s. I first thought 5s, then doubled it to 10s so a cold
+# first request isn't reported as a failure.
+SCORING_TIMEOUT_SECONDS = 10
+
 
 # ─── Scoring (Milestone 4) ───────────────────────────────────────────────────
 # How much each signal counts toward the combined score.

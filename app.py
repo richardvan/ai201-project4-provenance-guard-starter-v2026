@@ -24,6 +24,8 @@ Routes:
     GET  /health      is the service up, and is the model loaded
 """
 
+import concurrent.futures
+import time
 import uuid
 
 from flask import Flask, jsonify, request
@@ -148,6 +150,10 @@ def health():
     })
 
 
+# Scoring runs in a worker thread so /submit can stop waiting on it (capstone).
+_scoring_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
 @app.post("/submit")
@@ -200,30 +206,69 @@ def submit():
     a malformed input is one of the most common real failures there is.
     """
 
+    started = time.perf_counter()
+
+    def elapsed_ms():
+        return round((time.perf_counter() - started) * 1000, 1)
+
     # STEP 2 - JSON goes in, pull text and creator_id out of the body
-    payload = request.get_json(silent=True) or {}
-    text = payload.get ("text")
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        audit.log_rejection(creator_id="unknown", reason="bad_request: body is not a JSON object",
+                            duration_ms=elapsed_ms())
+        return jsonify({"error": "bad_request", "message": "Send a JSON object like {\"text\": \"...\"}."}), 400
+
+    text = payload.get("text")
     creator_id = payload.get("creator_id", "unknown")
+    if not isinstance(creator_id, str) or not creator_id.strip():
+        creator_id = "unknown"
 
     if not isinstance(text, str) or not text.strip():
-        audit.log_rejection(creator_id=creator_id, reason="bad_request: missing or empty text")
+        audit.log_rejection(creator_id=creator_id, reason="bad_request: missing or empty text",
+                            duration_ms=elapsed_ms())
         return jsonify({"error": "bad_request", "message": "Send JSON with a non-empty \"text\"."}), 400
 
     if len(text) > config.MAX_TEXT_CHARS:
-        audit.log_rejection(creator_id=creator_id, reason="text_too_long", length=len(text))
+        audit.log_rejection(creator_id=creator_id, reason="text_too_long", length=len(text),
+                            duration_ms=elapsed_ms())
         return jsonify({
             "error": "text_too_long",
             "message": f"Text is over the {config.MAX_TEXT_CHARS}-character limit.",
         }), 413
 
-
-    # Both signals, combined into one score, then turned into a guess and label
+    # Both signals, combined into one score, then turned into a guess and label.
+    # Capstone: every way this can fail gets a JSON error and a log entry.
     import detector
     import scoring
     import stylometry
 
-    model_score = detector.model_signal(text)
-    style_score = stylometry.style_signal(text)
+    def score_text():
+        m = detector.model_signal(text)
+        s = stylometry.style_signal(text)
+        return m, s
+
+    def fail(status, error, message, reason):
+        audit.log_rejection(creator_id=creator_id, reason=reason, duration_ms=elapsed_ms())
+        return jsonify({"error": error, "message": message}), status
+
+    future = _scoring_pool.submit(score_text)
+    try:
+        model_score, style_score = future.result(timeout=config.SCORING_TIMEOUT_SECONDS)
+    except concurrent.futures.TimeoutError:
+        return fail(504, "scoring_timeout",
+                    f"Scoring took longer than {config.SCORING_TIMEOUT_SECONDS} seconds. Try again.",
+                    "scoring_timeout")
+    except detector.DetectorUnavailable as exc:
+        return fail(503, "detector_unavailable",
+                    "The checker isn't available right now. Nothing was decided about your text.",
+                    f"detector_unavailable: {str(exc)[:120]}")
+    except ValueError as exc:
+        return fail(422, "text_too_short", str(exc), "text_too_short")
+    except Exception as exc:  # noqa: BLE001
+        return fail(500, "scoring_failed",
+                    "Something went wrong while checking your text. Nothing was decided.",
+                    f"scoring_failed: {type(exc).__name__}")
+
     combined = scoring.combine_signals(model_score, style_score)
     guess, label = scoring.score_to_label(combined)
 
@@ -238,6 +283,7 @@ def submit():
         combined_score=combined,
         label=label,
         status="decided",
+        duration_ms=elapsed_ms(),
     )
 
     return jsonify({
@@ -284,7 +330,7 @@ def appeal():
         }), 400
 
     # A typo'd ID would otherwise look like a broken endpoint.
-    entries = audit.entries_for(content_id)
+    entries = [e for e in audit.entries_for(content_id) if e.get("status") == "decided"]
     if not entries:
         audit.log_rejection(creator_id="unknown", reason="appeal not_found", content_id=content_id)
         return jsonify({
