@@ -54,7 +54,7 @@ MAX_TEXT_CHARS = 10_000
 # Measured: a cold run (model load ~7s + first score ~2s) is about 9s, and a
 # warm run is about 0.1s. I first thought 5s, then doubled it to 10s so a cold
 # first request isn't reported as a failure.
-SCORING_TIMEOUT_SECONDS = 10
+SCORING_TIMEOUT_SECONDS = float(os.getenv("AI201_SCORING_TIMEOUT", "10"))  # env override is for testing the 504 path
 
 
 # ─── Scoring (Milestone 4) ───────────────────────────────────────────────────
