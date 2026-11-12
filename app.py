@@ -211,6 +211,12 @@ def submit():
     def elapsed_ms():
         return round((time.perf_counter() - started) * 1000, 1)
 
+    def input_info(t):
+        """What came in, for the log: length and a short preview, not the whole text."""
+        if not isinstance(t, str):
+            return {"input_chars": None, "input_preview": f"<{type(t).__name__}>"}
+        return {"input_chars": len(t), "input_preview": t[:60]}
+
     # STEP 2 - JSON goes in, pull text and creator_id out of the body
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
@@ -225,12 +231,12 @@ def submit():
 
     if not isinstance(text, str) or not text.strip():
         audit.log_rejection(creator_id=creator_id, reason="bad_request: missing or empty text",
-                            duration_ms=elapsed_ms())
+                            duration_ms=elapsed_ms(), **input_info(text))
         return jsonify({"error": "bad_request", "message": "Send JSON with a non-empty \"text\"."}), 400
 
     if len(text) > config.MAX_TEXT_CHARS:
         audit.log_rejection(creator_id=creator_id, reason="text_too_long", length=len(text),
-                            duration_ms=elapsed_ms())
+                            duration_ms=elapsed_ms(), **input_info(text))
         return jsonify({
             "error": "text_too_long",
             "message": f"Text is over the {config.MAX_TEXT_CHARS}-character limit.",
@@ -248,7 +254,8 @@ def submit():
         return m, s
 
     def fail(status, error, message, reason):
-        audit.log_rejection(creator_id=creator_id, reason=reason, duration_ms=elapsed_ms())
+        audit.log_rejection(creator_id=creator_id, reason=reason, duration_ms=elapsed_ms(),
+                            **input_info(text))
         return jsonify({"error": error, "message": message}), status
 
     future = _scoring_pool.submit(score_text)
@@ -284,6 +291,7 @@ def submit():
         label=label,
         status="decided",
         duration_ms=elapsed_ms(),
+        **input_info(text),
     )
 
     return jsonify({

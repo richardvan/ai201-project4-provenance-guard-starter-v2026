@@ -1,3 +1,43 @@
+# Run Path (Capstone, Path B: local with logs)
+
+## What the environment needs
+
+- **Python 3.13** (3.11 to 3.13 work; 3.14 does not). Tested on 3.13.13, macOS.
+- **Dependencies** from `requirements.txt`. Versions I ran: Flask 3.1.3, Flask-Limiter 3.12, requests 2.34.2, torch 2.15.0, transformers 4.57.6, gunicorn 23.0.0, certifi 2026.10.23.
+- **Model file:** gpt2, about 525 MB, downloaded once from Hugging Face into `~/.cache/huggingface` on the first run. You need internet for that first run and about 1 GB of free disk. No API key, no account.
+- **Memory:** about 1 GB free while it runs.
+
+## The one command that starts it
+
+From a fresh clone:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && PORT=5001 AI201_DEBUG=0 python app.py
+```
+
+`PORT=5001` is there because macOS AirPlay holds port 5000. On a machine where 5000 is free you can leave it off. The service is ready when it prints `Provenance Guard on http://127.0.0.1:5001`. The first request after starting is slow (about 5 to 9 seconds) because the model loads on that request. After that a request takes about 0.02 seconds.
+
+## Check it works
+
+In a second terminal:
+
+```bash
+curl -X POST http://127.0.0.1:5001/submit -H "Content-Type: application/json" \
+  -d '{"text": "The meeting moved to Thursday because the room was double booked.", "creator_id": "me"}'
+```
+
+You should get JSON with `content_id`, `guess`, `confidence`, `label`, `model_score`, `style_score`. Every request, including failures, adds one line to `logs/audit.jsonl`:
+
+```bash
+curl "http://127.0.0.1:5001/log?limit=5"
+```
+
+To measure what a run costs: `python measure_cost.py http://127.0.0.1:5001`.
+
+---
+
+# Original starter notes
+
 # Running Provenance Guard
 
 Everything about how the starter works.
