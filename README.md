@@ -671,6 +671,46 @@ The service works when the input is clean and the model loads. It does not work 
 
 The build is one layer (a try/except around scoring plus input checks), one new log field, and one test script that triggers each failure on purpose. I think that's under ninety minutes. The timeout is the riskiest piece, so it was the first thing I would have cut. I kept it, with a 10 second limit (my measured 5 seconds, doubled), because a cold first request takes about 9 seconds.
 
+## Instrumentation
+
+Every request to `/submit` and `/appeal` writes one JSON line to `logs/audit.jsonl` through `audit.py` (`log_decision`, `log_appeal`, `log_rejection`). Decisions have `timestamp`, `content_id`, `creator_id`, `guess`, `model_score`, `style_score`, `combined_score`, `label`, `status`, `duration_ms`, and `input_chars` plus `input_preview` (the first 60 characters, not the whole text). Failures write a `rejected` entry with a `reason` (`bad_request`, `text_too_long`, `text_too_short`, `scoring_timeout`, `detector_unavailable`, `scoring_failed`, `appeal not_found`) and the same `duration_ms` and input fields. A failed run leaves a record the same way a good one does. `GET /log?limit=N` reads it back.
+
+These are the last 14 entries from one real session: ten submissions from `measure_cost.py`, then four deliberate bad requests (a JSON list instead of an object, text too short, empty text, and an appeal for an ID that doesn't exist). The `label` text is cut to its first words here, so the lines are readable. The log keeps the full label.
+
+```json
+{"combined_score": 0.3567, "content_id": "c_aa068ac16743", "creator_id": "cost_1", "duration_ms": 84.0, "guess": "unsure", "input_chars": 113, "input_preview": "The meeting moved to Thursday because the room was double bo", "label": "Our check can't tell whether a person ...", "model_score": 0.1604, "status": "decided", "style_score": 0.6511, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.5385, "content_id": "c_b56b277869cc", "creator_id": "cost_2", "duration_ms": 26.2, "guess": "unsure", "input_chars": 121, "input_preview": "Our new framework offers a comprehensive solution. It is imp", "label": "Our check can't tell whether a person ...", "model_score": 0.5039, "status": "decided", "style_score": 0.5905, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.4893, "content_id": "c_bc88947a601a", "creator_id": "cost_3", "duration_ms": 27.4, "guess": "unsure", "input_chars": 111, "input_preview": "honestly i didnt think the movie would be that good but my b", "label": "Our check can't tell whether a person ...", "model_score": 0.4821, "status": "decided", "style_score": 0.5, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.2819, "content_id": "c_4c4fb488b3b8", "creator_id": "cost_4", "duration_ms": 25.2, "guess": "human", "input_chars": 110, "input_preview": "The river bends twice before the old mill, where the water s", "label": "We think a person wrote this.", "model_score": 0.0994, "status": "decided", "style_score": 0.5556, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.6461, "content_id": "c_a7b528743eb2", "creator_id": "cost_5", "duration_ms": 27.3, "guess": "unsure", "input_chars": 113, "input_preview": "In conclusion, effective communication is essential for succ", "label": "Our check can't tell whether a person ...", "model_score": 0.6333, "status": "decided", "style_score": 0.6653, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.3117, "content_id": "c_61b1da1d2310", "creator_id": "cost_6", "duration_ms": 30.4, "guess": "human", "input_chars": 110, "input_preview": "I burned the rice again. Third time this month. At this poin", "label": "We think a person wrote this.", "model_score": 0.2748, "status": "decided", "style_score": 0.3671, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.3446, "content_id": "c_bcc2f883f2c8", "creator_id": "cost_7", "duration_ms": 19.2, "guess": "human", "input_chars": 114, "input_preview": "The committee reviewed the proposal and found several areas ", "label": "We think a person wrote this.", "model_score": 0.241, "status": "decided", "style_score": 0.5, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.3727, "content_id": "c_ff926356dbe0", "creator_id": "cost_8", "duration_ms": 27.6, "guess": "unsure", "input_chars": 112, "input_preview": "My grandmother kept her recipes on index cards, stained with", "label": "Our check can't tell whether a person ...", "model_score": 0.2879, "status": "decided", "style_score": 0.5, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.4531, "content_id": "c_12be0a3ba454", "creator_id": "cost_9", "duration_ms": 25.9, "guess": "unsure", "input_chars": 115, "input_preview": "Artificial intelligence is transforming industries by automa", "label": "Our check can't tell whether a person ...", "model_score": 0.4218, "status": "decided", "style_score": 0.5, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"combined_score": 0.5404, "content_id": "c_ce291d04c9ce", "creator_id": "cost_10", "duration_ms": 26.5, "guess": "unsure", "input_chars": 103, "input_preview": "We walked up the hill after dinner and the whole town was qu", "label": "Our check can't tell whether a person ...", "model_score": 0.5674, "status": "decided", "style_score": 0.5, "timestamp": "2026-11-12T04:50:16+00:00"}
+{"creator_id": "unknown", "duration_ms": 0.0, "event": "rejected", "reason": "bad_request: body is not a JSON object", "status": "rejected", "timestamp": "2026-11-12T04:50:16+00:00"}
+{"creator_id": "unknown", "duration_ms": 0.2, "event": "rejected", "input_chars": 2, "input_preview": "hi", "reason": "text_too_short", "status": "rejected", "timestamp": "2026-11-12T04:50:16+00:00"}
+{"creator_id": "unknown", "duration_ms": 0.0, "event": "rejected", "input_chars": 0, "input_preview": "", "reason": "bad_request: missing or empty text", "status": "rejected", "timestamp": "2026-11-12T04:50:16+00:00"}
+{"content_id": "c_nope", "creator_id": "unknown", "event": "rejected", "reason": "appeal not_found", "status": "rejected", "timestamp": "2026-11-12T04:50:16+00:00"}
+```
+
+Something the clean-clone test found: on a fresh checkout the first `/submit` came back as a 504, and the audit log shows why: `"reason": "scoring_timeout", "duration_ms": 10012.4`. Importing torch and loading gpt2 for the first time took longer than my 10 second limit. I fixed it by loading the model when the service starts (`app.py::main`), and a second clean clone answered its first request with a 200 in 1.6 seconds.
+
+## What It Costs
+
+There is no API in this system, so there is no money cost per run. The cost is seconds of compute on my laptop (a Mac with an M1 chip, CPU only), and a one-time model load.
+
+**How I measured it:** `measure_cost.py` sends ten different texts to the running service one after another, each with its own `creator_id` so the rate limit never trips. It times each request end to end and reads the server-side `duration_ms` back from the log. I did this after the model was already loaded.
+
+| | mean | min | max |
+|---|---|---|---|
+| End to end (10 runs) | 0.036 s | 0.021 s | 0.100 s |
+| Server side, `duration_ms` (10 runs) | 0.032 s | 0.019 s | 0.084 s |
+
+The first run is the slowest (0.100 s) and the rest sit near 0.03 s. An earlier measurement before I added the startup load had a cold first run of 5.1 s, which pulled the mean up to 0.53 s. That is the one-time load cost, now paid at startup (about 10 to 20 seconds) and not by a user.
+
+**For a hundred people a day:** if each person submits five pieces, that is 100 × 5 = 500 runs, and 500 × 0.036 s = 18 seconds of compute a day. In dollars it is nothing, because the model runs on my own machine. The real cost is the 525 MB model sitting in memory (about 1 GB of RAM in use), and that is why a 512 MB free host would not work and I chose Path B.
+
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
