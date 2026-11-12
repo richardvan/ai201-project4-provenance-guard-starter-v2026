@@ -15,7 +15,7 @@ From a fresh clone:
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && PORT=5001 AI201_DEBUG=0 python app.py
 ```
 
-`PORT=5001` is there because macOS AirPlay holds port 5000. On a machine where 5000 is free you can leave it off. The service is ready when it prints `Provenance Guard on http://127.0.0.1:5001`. The first request after starting is slow (about 5 to 9 seconds) because the model loads on that request. After that a request takes about 0.02 seconds.
+`PORT=5001` is there because macOS AirPlay holds port 5000. On a machine where 5000 is free you can leave it off. The service loads the model before it takes requests, so startup takes 10 to 20 seconds and is ready when it prints `Provenance Guard on http://127.0.0.1:5001`. After that a request takes about 0.02 seconds. (Before I added the startup load, a fresh clone's first request timed out with a 504, because importing torch and loading gpt2 took over 10 seconds.)
 
 ## Check it works
 

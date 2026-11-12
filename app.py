@@ -381,6 +381,15 @@ def get_log():
 
 
 def main():
+    # Capstone: load the model before taking requests. A clean checkout's first
+    # request was timing out (504) because importing torch plus loading gpt2
+    # took longer than SCORING_TIMEOUT_SECONDS.
+    import detector
+    print("Loading the detector model (first run downloads about 525 MB)...")
+    try:
+        print(detector.warm_up())
+    except detector.DetectorUnavailable as exc:
+        print(f"WARNING: detector not loaded, /submit will answer 503 until it is.\n{exc}")
     print(f"Provenance Guard on http://{config.HOST}:{config.PORT}")
     print(f"  detector model:  {config.DETECTOR_MODEL}")
     print(f"  rate limiting:   {'ON' if config.RATE_LIMITING_ENABLED else 'off (unit 8)'}")
