@@ -711,6 +711,50 @@ The first run is the slowest (0.100 s) and the rest sit near 0.03 s. An earlier 
 
 **For a hundred people a day:** if each person submits five pieces, that is 100 × 5 = 500 runs, and 500 × 0.036 s = 18 seconds of compute a day. In dollars it is nothing, because the model runs on my own machine. The real cost is the 525 MB model sitting in memory (about 1 GB of RAM in use), and that is why a 512 MB free host would not work and I chose Path B.
 
+## Capstone Run Log
+
+Run by `run_capstone.py`, which starts fresh servers for each trial and changes nothing between trials. Full output: `results/capstone_run_2026-11-11_2155.md`. Verdicts are against the targets in `criteria.md` (Capstone criteria), which were committed in `8308f04` before this run.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Bad input gets a 4xx JSON error | 10/10 | 10/10 | 10/10 | 10/10 | MET |
+| 2. Every failed request is logged | 10/10 | 10/10 | 10/10 | 10/10 | MET |
+| 3. Scoring failure: right code, decides nothing | 10/10 | 10/10 | 10/10 | 10/10 | MET |
+| 4. Appeals: unknown ID refused, real ones work | 10/10 | 10/10 | 10/10 | 10/10 | MET |
+| 5. Original path works and is fast | 19/20 | 20/20 | 20/20 | 20/20 | MET |
+
+All five criteria were met on all three trials. I don't have a miss to diagnose from this run. I checked the raw output to make sure the harness wasn't just agreeing with itself, and it holds up: the status codes, error fields and log entries below are the real ones.
+
+**Criterion 1.** `run_capstone.py::crit1_2`, trial 1. The ten bad requests and what came back:
+
+```
+body is a JSON list        -> 400 bad_request
+body is a bare number      -> 400 bad_request
+text missing               -> 400 bad_request
+text empty                 -> 400 bad_request
+text only spaces           -> 400 bad_request
+text is a number           -> 400 bad_request
+text is a list             -> 400 bad_request
+text over 10,000 chars     -> 413 text_too_long
+text is one word           -> 422 text_too_short
+text is null               -> 400 bad_request
+```
+
+**Criterion 2.** The same ten requests added exactly ten `rejected` entries to `logs/audit.jsonl`, each with a `reason` and a `duration_ms`. Two of the ten (the list body and the bare number) don't have `input_chars` or `input_preview`, because a body that isn't an object has no `text` to preview. That doesn't break the criterion, but it's a small gap in the record.
+
+**Criterion 3.** `run_capstone.py::crit3`, trial 1. The first entry from each failure, as logged by `app.py`:
+
+```json
+{"timestamp": "2026-11-12T05:54:47+00:00", "creator_id": "d0", "event": "rejected", "status": "rejected", "reason": "detector_unavailable: Couldn't load 'no-such-model-xyz': We couldn't connect to 'https://huggingface.co' to load the files, and couldn't find ", "duration_ms": 0.5, "input_chars": 95, "input_preview": "The meeting moved to Thursday because the room was double bo"}
+{"timestamp": "2026-11-12T05:54:50+00:00", "creator_id": "s0", "event": "rejected", "status": "rejected", "reason": "scoring_timeout", "duration_ms": 12.5, "input_chars": 95, "input_preview": "The meeting moved to Thursday because the room was double bo"}
+```
+
+Model down: 5 of 5 got 503 `detector_unavailable`. Timeout 0.01 s: 5 of 5 got 504 `scoring_timeout` in 0.011 to 0.016 seconds. Across both, zero `decided` entries and ten matching `rejected` ones.
+
+**Criterion 4.** `run_capstone.py::crit4`, trial 1. Five appeals for the same fake ID: `[404, 404, 404, 404, 404]`. Five appeals for real submissions: `[200, 200, 200, 200, 200]`, each with the appeal entry after the decision in the log.
+
+**Criterion 5.** `run_capstone.py::crit5`, trial 1. 20 of 20 returned all six fields and had a `decided` entry. `duration_ms` for the first six: `[17.8, 16.3, 20.6, 17.8, 15.6, 21.6]`. The slowest of the 20 in this trial was 58.8 ms, against a limit of 500.
+
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
