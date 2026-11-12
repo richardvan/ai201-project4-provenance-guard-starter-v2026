@@ -659,18 +659,17 @@ I'd go with fewer wrong accusations, because a writer called AI for their own wo
 
 **System:** Provenance Guard, the same Flask service from units 7 and 8. **Shape: B, harden against failure. Run path: B, local with logs.**
 
-The service works when the input is clean and the model loads. It does not work when something goes wrong inside `/submit`. Right now the route only checks for missing text and text that is too long. After that it calls the model and the style check with nothing around them, so a model that won't load, a text with too few tokens, or a JSON body that isn't an object turns into a raw 500 with no record of it in the audit log. I'm adding one failure-handling layer around the scoring step in `/submit`. Every way scoring can fail gets a clear JSON error with the right status code (not a crash), and every failure leaves a record in the log. I'm also adding a duration to every log entry so a slow or hung run shows up after the fact.
+The service works when the input is clean and the model loads. It does not work when something goes wrong inside `/submit`. Right now the route only checks for missing text and text that is too long. After that it calls the model and the style check with nothing around them, so a model that won't load, a text with too few tokens, or a JSON body that isn't an object turns into a raw 500 with no record of it in the audit log. I'm adding one failure-handling layer around the scoring step in `/submit`. Every way scoring can fail gets a clear JSON error with the right status code (not a crash), and every failure leaves a record in the log. I'm also adding a duration to every log entry so a slow or hung run shows up after the fact. The same layer covers one failure path on `/appeal`: a repeated unknown `content_id` used to get a 200 because the rejection log entry counted as proof the ID existed. It now gets a 404 every time. I decided this after the first draft of this section, when I chose to bring it into scope.
 
 ## Out of scope
 
 - **No changes to the signals, the weights or the thresholds.** The six plain-writing false positives from unit 8 stay as they are. That is a signal problem and not a failure-handling problem.
 - **No retries.** The model runs on my machine, so there is no flaky network call to retry. A failure to load is either fixed or it isn't.
 - **No hosted deploy.** The model is about 550 MB, so this runs locally (Path B).
-- **No fix to the `/appeal` repeat-unknown-ID bug** unless my criteria end up needing it. I know it's there and it's listed in What's Still Broken.
 
 ## Size check
 
-The build is one layer (a try/except around scoring plus input checks), one new log field, and one test script that triggers each failure on purpose. I think that's under ninety minutes. If it grows, the first thing I cut is the timeout.
+The build is one layer (a try/except around scoring plus input checks), one new log field, and one test script that triggers each failure on purpose. I think that's under ninety minutes. The timeout is the riskiest piece, so it was the first thing I would have cut. I kept it, with a 10 second limit (my measured 5 seconds, doubled), because a cold first request takes about 9 seconds.
 
 ---
 
