@@ -148,13 +148,13 @@ path.
 I send 10 bad requests to `/submit`: a body that is a JSON list, a body that is
 a bare number, `text` missing, `text` empty, `text` only spaces, `text` as a
 number, `text` as a list, `text` over 10,000 characters, `text` of one word,
-and a `creator_id` that is a list. **All 10 must come back with a 4xx status
+and `text` set to `null`. **All 10 must come back with a 4xx status
 and a JSON body that has an `error` field.** None may be a 500, and none may be
 an HTML page. I need 10 of 10 in each of three trials.
 
 *Why this target:* a crash on a bad request is the most common real failure
-this service can have, and before the capstone three of these ten (the list
-body, the one-word text and the list `creator_id`) were 500s or worse. It has
+this service can have, and before the capstone at least two of these ten (the
+list body and the one-word text) were raw 500s. It has
 to be all ten and not nine because a single 500 means a person typed something
 and got a stack trace back. I'm not going to ask for less, and ten kinds of bad
 input is as many as I can think of for a text box.
