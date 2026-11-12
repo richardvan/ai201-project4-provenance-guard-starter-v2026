@@ -132,3 +132,94 @@ The model signal can score identical input differently, and unit 8 needs targets
      A number you missed stays where it is, gets diagnosed, and gets a fix
      attempted. That's where the points are.
      ───────────────────────────────────────────────────────────────────────── -->
+
+
+---
+
+# Capstone criteria — hardening Provenance Guard
+
+Written before I ran anything for the capstone. The first four are about the
+new failure handling. The fifth is about whether the original system still
+works after I added it. Criteria 1, 2 and 3 are about what happens on the bad
+path.
+
+## 1. Bad input gets a clear error, not a crash
+
+I send 10 bad requests to `/submit`: a body that is a JSON list, a body that is
+a bare number, `text` missing, `text` empty, `text` only spaces, `text` as a
+number, `text` as a list, `text` over 10,000 characters, `text` of one word,
+and a `creator_id` that is a list. **All 10 must come back with a 4xx status
+and a JSON body that has an `error` field.** None may be a 500, and none may be
+an HTML page. I need 10 of 10 in each of three trials.
+
+*Why this target:* a crash on a bad request is the most common real failure
+this service can have, and before the capstone three of these ten (the list
+body, the one-word text and the list `creator_id`) were 500s or worse. It has
+to be all ten and not nine because a single 500 means a person typed something
+and got a stack trace back. I'm not going to ask for less, and ten kinds of bad
+input is as many as I can think of for a text box.
+
+## 2. Every failed request leaves a log entry
+
+After the same 10 bad requests, the audit log must have gained **exactly 10
+new entries**, each with `"event": "rejected"`, a non-empty `reason`, and a
+`duration_ms` that is a number. I need 10 of 10 in each of three trials.
+
+*Why this target:* in unit 8 the rule I took from the attack run was that an
+attack that shows up only as an absence is one I'll never find. Exactly 10, not
+at least 10, because a request that writes two entries or none means the log
+can't be trusted to count things. I check it by counting lines before and
+after, so two people would get the same answer.
+
+## 3. When scoring itself fails, the service says so and decides nothing
+
+Two ways scoring can fail, tested on purpose:
+
+- **Model won't load.** I start the service with `AI201_DETECTOR_MODEL` set to
+  a model name that doesn't exist and `HF_HUB_OFFLINE=1`, then send 5 normal
+  submissions. Each must come back **503** with an `error` field of
+  `detector_unavailable`.
+- **Scoring takes too long.** I start the service with
+  `AI201_SCORING_TIMEOUT=0.01` and send 5 normal submissions. Each must come
+  back **504** with an `error` field of `scoring_timeout`, in **under 2
+  seconds**.
+
+All 10 must get the right status, and **none of the 10 may leave a `decided`
+entry in the log** (each must leave a `rejected` entry with the matching
+reason instead). I need 10 of 10 in each of three trials.
+
+*Why this target:* the worst thing this service can do is label a writer when
+the check didn't actually run, so "decides nothing" matters as much as the
+status code. Under 2 seconds because the whole point of the timeout is that the
+caller doesn't sit waiting, and the response should arrive just after the limit
+I set, not after the scoring finishes in the background.
+
+## 4. An appeal for an unknown ID is refused every time, and a real one still works
+
+I send 5 appeals for a `content_id` that doesn't exist, using the **same fake
+ID each time**. Each must get **404**. Then I submit 5 real texts and appeal
+each one: each appeal must get **200** with `"status": "under_review"`, and the
+log must show the appeal entry after the original decision. That is 10 of 10 in
+each of three trials.
+
+*Why this target:* the bug I fixed was that the second appeal for the same
+fake ID got a 200, because the first 404 had written a log entry that counted
+as proof the ID existed. Five repeats of one ID is the case that triggers it. I
+also test the real appeals in the same criterion because a fix that refuses
+everything would pass the first half. An appeal is the only thing a wrongly
+labelled writer has, so a wrong answer here costs more than anywhere else.
+
+## 5. The original path still works, and fast, after the changes
+
+I send 20 normal, different texts to `/submit` after the model has loaded,
+each with its own `creator_id`. At least **19 of 20** must return 200 with all
+six fields (`content_id`, `guess`, `confidence`, `label`, `model_score`,
+`style_score`), each must have a `decided` log entry, and at least **19 of 20**
+must have a `duration_ms` under **500**. I need that in each of three trials.
+
+*Why this target:* this is the regression check for the capstone. The new
+code wraps the scoring in a worker thread, and I want to know it didn't break
+the normal case or make it slower. I measured a warm run at about 0.03 seconds,
+so 500 ms is about 15 times that. It is loose on purpose, because it should
+only catch a real slowdown and not a busy laptop. I allow one run in 20 to
+miss it because the first request after startup can run slower than the rest.
