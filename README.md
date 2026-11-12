@@ -698,7 +698,7 @@ Something the clean-clone test found: on a fresh checkout the first `/submit` ca
 
 ## What It Costs
 
-There is no API in this system, so there is no money cost per run. The cost is seconds of compute on my laptop (a Mac with an M1 chip, CPU only), and a one-time model load.
+There is no API in this system, so there is no money cost per run. The cost is seconds of compute on my laptop (a Mac with an Apple M4 chip, CPU only), and a one-time model load.
 
 **How I measured it:** `measure_cost.py` sends ten different texts to the running service one after another, each with its own `creator_id` so the rate limit never trips. It times each request end to end and reads the server-side `duration_ms` back from the log. I did this after the model was already loaded.
 
