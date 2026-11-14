@@ -755,6 +755,40 @@ Model down: 5 of 5 got 503 `detector_unavailable`. Timeout 0.01 s: 5 of 5 got 50
 
 **Criterion 5.** `run_capstone.py::crit5`, trial 1. 20 of 20 returned all six fields and had a `decided` entry. `duration_ms` for the first six: `[17.8, 16.3, 20.6, 17.8, 15.6, 21.6]`. The slowest of the 20 in this trial was 58.8 ms, against a limit of 500.
 
+## Capstone Verdicts and Diagnosis
+
+All five criteria were MET on all three trials (table in Capstone Run Log above), so there is no miss to diagnose. I'm not going to invent one. Two honest notes on that:
+
+- **The easy one is criterion 5.** Its 500 ms limit is about fifteen times the 0.03 s I measured, so it was always going to pass. I set it loose on purpose, to catch a real slowdown and not a busy laptop, but it means criterion 5 told me very little.
+- **The real failure was found before the criteria existed.** The clean-clone test in Milestone 3 caught the cold-start 504, and I fixed it then. That is why the criteria all pass. Criteria 1 to 4 describe the system after that hardening, so they confirm it and don't find new faults.
+
+## Capstone Improvement
+
+With no miss to follow, I aimed the one improvement at a gap I found while reading the first run's log. The two rejections for a body that isn't a JSON object (a list, a bare number) had no `input_chars` or `input_preview`, because the code looks for a `text` field and there isn't one. Of the 10 rejection entries per trial, 8 had the input fields and 2 did not, in all three trials. Someone reading the log later could not tell what those two requests contained.
+
+**The change** (`app.py::submit`, `raw_input_info`): when the body isn't an object, record the length and the first 60 characters of the raw body.
+
+**Before** (`results/capstone_run_2026-11-11_2155.md`), the first two entries of trial 1:
+
+```json
+{"timestamp": "2026-11-12T05:54:42+00:00", "creator_id": "unknown", "event": "rejected", "status": "rejected", "reason": "bad_request: body is not a JSON object", "duration_ms": 0.0}
+{"timestamp": "2026-11-12T05:54:42+00:00", "creator_id": "unknown", "event": "rejected", "status": "rejected", "reason": "bad_request: body is not a JSON object", "duration_ms": 0.0}
+```
+
+**After** (`results/capstone_run_2026-11-14_1221.md`), the same two entries:
+
+```json
+{"timestamp": "2026-11-14T20:21:16+00:00", "creator_id": "unknown", "event": "rejected", "status": "rejected", "reason": "bad_request: body is not a JSON object", "duration_ms": 0.0, "input_chars": 9, "input_preview": "[1, 2, 3]"}
+{"timestamp": "2026-11-14T20:21:16+00:00", "creator_id": "unknown", "event": "rejected", "status": "rejected", "reason": "bad_request: body is not a JSON object", "duration_ms": 0.0, "input_chars": 1, "input_preview": "5"}
+```
+
+| | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Rejection entries with input fields, before | 8/10 | 8/10 | 8/10 |
+| Rejection entries with input fields, after | 10/10 | 10/10 | 10/10 |
+
+The five criteria came out the same after the change: 10/10, 10/10, 10/10, 10/10 and 20/20 on every trial, all MET. Nothing regressed. The change helped, but it is a small one, and I should say so plainly: it improves what the log tells me, and none of my five criteria could have measured it, because none of them asks about the input fields. That is a flaw in my criteria and not in the fix.
+
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**

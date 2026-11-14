@@ -217,11 +217,16 @@ def submit():
             return {"input_chars": None, "input_preview": f"<{type(t).__name__}>"}
         return {"input_chars": len(t), "input_preview": t[:60]}
 
+    def raw_input_info():
+        """No text field to preview, so record the raw body instead."""
+        raw = request.get_data()
+        return {"input_chars": len(raw), "input_preview": raw[:60].decode("utf-8", errors="replace")}
+
     # STEP 2 - JSON goes in, pull text and creator_id out of the body
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         audit.log_rejection(creator_id="unknown", reason="bad_request: body is not a JSON object",
-                            duration_ms=elapsed_ms())
+                            duration_ms=elapsed_ms(), **raw_input_info())
         return jsonify({"error": "bad_request", "message": "Send a JSON object like {\"text\": \"...\"}."}), 400
 
     text = payload.get("text")
