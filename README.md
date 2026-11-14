@@ -333,6 +333,18 @@ $ curl "http://127.0.0.1:5001/log?limit=2"
 
 ---
 
+### Capstone: how I used AI
+
+I used Claude Code for the whole capstone, and I want to be exact about where it helped and where it was wrong.
+
+**1. It drafted my five criteria, and that has a cost.** The brief says to write the criteria myself. I asked Claude to write them in my voice instead, then read them and kept them as they were. I can defend each one, but they came from a draft and not from me starting blank, and it shows in two places. Criterion 5 is so loose (500 ms against a measured 0.03 s) that it told me almost nothing, and none of the five could have measured my one improvement. I should have caught both before I ran anything.
+
+**2. Its own first draft of the criteria had a mistake that would have failed on the first trial.** One of the ten bad inputs was a `creator_id` that is a list. My code accepts that and falls back to `unknown`, so it returns 200, not a 4xx, and criterion 1 would have missed on a test of the criterion and not of the system. Claude also wrote that three of the ten inputs used to crash, when it had only reasoned that out. I changed the input to `text: null` and weakened the claim to "at least two". Both fixes were made before any results.
+
+**3. The clean clone found what the AI's testing didn't.** Claude tested the new failure handling in my working folder, where the model was already loaded and cached. Cloning the repo into a new folder and following my own RUNNING.md is what produced the first 504, because a fresh checkout took over ten seconds to import torch and load gpt2. That was the one real failure of the unit, and I found it by doing the step the brief told me to do and not by asking the AI.
+
+**4. A timeout value I picked and the AI measured.** I said to double the timeout. Claude measured the cold request (about 9 seconds) and set 10 as the doubled 5, which is a reason I can state. The clean clone later showed 10 was still not enough on a truly cold start, so the real fix was loading the model at startup.
+
 ## Rate Limiting
 
 **My limits:** 5 per minute, 50 per day, on `POST /submit`, both set in `config.py`.
@@ -788,6 +800,21 @@ With no miss to follow, I aimed the one improvement at a gap I found while readi
 | Rejection entries with input fields, after | 10/10 | 10/10 | 10/10 |
 
 The five criteria came out the same after the change: 10/10, 10/10, 10/10, 10/10 and 20/20 on every trial, all MET. Nothing regressed. The change helped, but it is a small one, and I should say so plainly: it improves what the log tells me, and none of my five criteria could have measured it, because none of them asks about the input fields. That is a flaw in my criteria and not in the fix.
+
+## Capstone: What's Still Broken
+
+No criterion was missed, so nothing here is a failed target. These are the weak spots I know about, and what I'd do about each.
+
+- **The timeout stops the wait, not the work.** After a 504 the worker thread keeps scoring in the background. Python can't kill a thread, and the pool only has two workers, so a run of stuck scorings could leave `/submit` with no free worker. I stopped because the real fix is to score in a separate process that can be killed, and that is more than my ninety minutes. In normal use scoring takes 0.03 seconds, so this only shows up if something hangs.
+- **Criterion 5 is too loose to mean much.** 500 ms against a measured 0.03 s would only catch a slowdown of fifteen times. I'd tighten it to about 100 ms and say why. I left it because I don't want to change a criterion after I've seen results unless it couldn't be measured, and this one could.
+- **None of my criteria checks the log's input fields.** That is why my one improvement couldn't show up in any verdict. A sixth criterion on the shape of a log entry is the fix.
+- **A test setting is left in the real config.** `AI201_SCORING_TIMEOUT` is only there so I could trigger a 504. Anyone who sets it on a real run could break scoring. I'd remove it or rename it to say it's for tests.
+- **I didn't re-run a from-scratch install after the startup fix.** The second clean clone reused the first clone's virtualenv, so the model-at-startup fix is tested on a fresh checkout but not on a fresh `pip install`.
+- **Still true from unit 8:** the six plain-writing false positives, and the rate limit that lives in memory and resets when the service restarts. I scoped both out at the start.
+
+## If I Had Another Unit
+
+The first thing I'd do is move scoring into a separate process with a timeout that can actually kill it. It is the only place the service tells a caller it gave up while it is still doing the work, and everything else on this list is smaller than that. After that I'd write the sixth criterion about the log.
 
 ---
 
